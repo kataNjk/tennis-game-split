@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classic Tennis Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        
+        #gameContainer {
+            text-align: center;
+            border: 2px solid #fff;
+            background-color: #111;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        
+        #gameCanvas {
+            background-color: #000;
+            border: 2px solid #fff;
+            display: block;
+        }
+        
+        #score {
+            color: #fff;
+            font-size: 24px;
+            margin: 20px 0;
+        }
+        
+        #instructions {
+            color: #fff;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="score">プレイヤー: 0 | コンピューター: 0</div>
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+        <div id="instructions">
+            操作方法: W/S キーで左パドルを上下に移動
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+
+        const game = {
+            width: canvas.width,
+            height: canvas.height,
+            playerScore: 0,
+            computerScore: 0
+        };
+
+        const paddle = {
+            width: 10,
+            height: 80,
+            speed: 5
+        };
+
+        const player = {
+            x: 10,
+            y: game.height / 2 - paddle.height / 2,
+            width: paddle.width,
+            height: paddle.height,
+            speed: paddle.speed,
+            dy: 0
+        };
+
+        const computer = {
+            x: game.width - 20,
+            y: game.height / 2 - paddle.height / 2,
+            width: paddle.width,
+            height: paddle.height,
+            speed: paddle.speed - 1
+        };
+
+        const balls = [{
+            x: game.width / 2,
+            y: game.height / 2,
+            radius: 8,
+            dx: 8,
+            dy: 6,
+            age: 0
+        }];
+
+        const keys = {};
+
+        function drawRect(x, y, width, height, color = '#fff') {
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, width, height);
+        }
+
+        function drawCircle(x, y, radius, color = '#fff') {
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawDashedLine() {
+            ctx.setLineDash([5, 15]);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(game.width / 2, 0);
+            ctx.lineTo(game.width / 2, game.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function updatePlayer() {
+            if (keys['KeyW'] && player.y > 0) {
+                player.y -= player.speed;
+            }
+            if (keys['KeyS'] && player.y < game.height - player.height) {
+                player.y += player.speed;
+            }
+        }
+
+        function updateComputer() {
+            let targetBall = balls[0];
+            let closestDistance = Math.abs(balls[0].x - computer.x);
+            
+            for (let i = 1; i < balls.length; i++) {
+                const distance = Math.abs(balls[i].x - computer.x);
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    targetBall = balls[i];
+                }
+            }
+            
+            const ballCenter = targetBall.y;
+            const computerCenter = computer.y + computer.height / 2;
+            
+            if (ballCenter < computerCenter - 10) {
+                computer.y -= computer.speed;
+            } else if (ballCenter > computerCenter + 10) {
+                computer.y += computer.speed;
+            }
+            
+            if (computer.y < 0) computer.y = 0;
+            if (computer.y > game.height - computer.height) {
+                computer.y = game.height - computer.height;
+            }
+        }
+
+        function updateBalls() {
+            for (let i = balls.length - 1; i >= 0; i--) {
+                const ball = balls[i];
+                ball.x += ball.dx;
+                ball.y += ball.dy;
+                ball.age++;
+
+                if (ball.y <= ball.radius || ball.y >= game.height - ball.radius) {
+                    ball.dy = -ball.dy;
+                }
+
+                if (ball.x <= player.x + player.width && 
+                    ball.y >= player.y && 
+                    ball.y <= player.y + player.height) {
+                    ball.dx = -ball.dx;
+                    ball.x = player.x + player.width + ball.radius;
+                }
+
+                if (ball.x >= computer.x - ball.radius && 
+                    ball.y >= computer.y && 
+                    ball.y <= computer.y + computer.height) {
+                    ball.dx = -ball.dx;
+                    ball.x = computer.x - ball.radius;
+                }
+
+                if (ball.x < 0) {
+                    game.computerScore++;
+                    balls.splice(i, 1);
+                    if (balls.length === 0) {
+                        resetBalls();
+                    }
+                    checkWinner();
+                    continue;
+                }
+
+                if (ball.x > game.width) {
+                    game.playerScore++;
+                    balls.splice(i, 1);
+                    if (balls.length === 0) {
+                        resetBalls();
+                    }
+                    checkWinner();
+                    continue;
+                }
+
+                if (ball.age > 180 && balls.length < 5) {
+                    splitBall(ball);
+                    ball.age = 0;
+                }
+            }
+        }
+
+        function resetBalls() {
+            balls.length = 0;
+            balls.push({
+                x: game.width / 2,
+                y: game.height / 2,
+                radius: 8,
+                dx: Math.random() > 0.5 ? 8 : -8,
+                dy: Math.random() > 0.5 ? 6 : -6,
+                age: 0
+            });
+        }
+        
+        function splitBall(ball) {
+            const newBall = {
+                x: ball.x,
+                y: ball.y,
+                radius: ball.radius,
+                dx: -ball.dx + (Math.random() - 0.5) * 4,
+                dy: ball.dy + (Math.random() - 0.5) * 4,
+                age: 0
+            };
+            balls.push(newBall);
+        }
+
+        function checkWinner() {
+            if (game.playerScore >= 10) {
+                alert('プレイヤーの勝利です！');
+                game.playerScore = 0;
+                game.computerScore = 0;
+            } else if (game.computerScore >= 10) {
+                alert('コンピューターの勝利です！');
+                game.playerScore = 0;
+                game.computerScore = 0;
+            }
+        }
+
+        function updateScore() {
+            scoreElement.textContent = `プレイヤー: ${game.playerScore} | コンピューター: ${game.computerScore}`;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, game.width, game.height);
+            
+            drawDashedLine();
+            
+            drawRect(player.x, player.y, player.width, player.height);
+            drawRect(computer.x, computer.y, computer.width, computer.height);
+            
+            for (const ball of balls) {
+                drawCircle(ball.x, ball.y, ball.radius);
+            }
+        }
+
+        function gameLoop() {
+            updatePlayer();
+            updateComputer();
+            updateBalls();
+            updateScore();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        gameLoop();
+    </script>
+</body>
+</html>
